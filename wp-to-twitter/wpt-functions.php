@@ -33,13 +33,13 @@ function wpt_checkbox( $field, $sub1 = false, $sub2 = '' ) {
 			$value = 0;
 		}
 		if ( $value && 1 === (int) $value ) {
-			return 'checked="checked"';
+			return 'checked';
 		} else {
 			return '';
 		}
 	}
 	if ( 1 === (int) get_option( $field ) ) {
-		return 'checked="checked"';
+		return 'checked';
 	}
 
 	return '';
@@ -71,15 +71,18 @@ function wpt_selected( $field, $value, $type = 'select' ) {
  */
 function wpt_set_log( $data, $id, $message, $http = '200' ) {
 	if ( 'test' === $id ) {
-		update_option( $data, $message );
+		delete_transient( $data );
+		set_transient( $data, $message, 300 );
 	} else {
 		$message = array(
 			'message' => $message,
 			'http'    => (string) $http,
 		);
-		update_post_meta( $id, '_' . $data, $message );
+		delete_transient( $id . '_' . $data );
+		set_transient( $id . '_' . $data, $message );
 	}
-	update_option( $data . '_last', array( $id, $message ) );
+	delete_transient( $data . '_last' );
+	set_transient( $data . '_last', array( $id, $message ), 300 );
 }
 
 /**
@@ -92,11 +95,11 @@ function wpt_set_log( $data, $id, $message, $http = '200' ) {
  */
 function wpt_get_log( $data, $id ) {
 	if ( 'test' === $id ) {
-		$log = get_option( $data );
+		$log = get_transient( $data );
 	} elseif ( 'last' === $id ) {
-		$log = get_option( $data . '_last' );
+		$log = get_transient( $data . '_last' );
 	} else {
-		$log = get_post_meta( $id, '_' . $data, true );
+		$log = get_transient( $id . '_' . $data );
 	}
 
 	return $log;
@@ -137,34 +140,34 @@ function wpt_check_functions() {
 		$message .= " <a href='$shrink'>$shrink</a></li>";
 	}
 	// check social network credentials.
-	if ( wtt_oauth_test() || wpt_mastodon_connection() || wpt_bluesky_connection() ) {
+	if ( wpt_check_connections( false, true ) ) {
 		$rand     = wp_rand( 1000000, 9999999 );
 		$testpost = wpt_post_to_service( "This is a test of XPoster. $shrink ($rand)" );
 		if ( $testpost && ! empty( $testpost ) ) {
 			foreach ( $testpost as $key => $test ) {
 				if ( 'xcom' === $key ) {
-					$message .= '<li><strong>' . __( 'XPoster successfully submitted a status update to X.com.', 'wp-to-twitter' ) . '</strong></li>';
+					$message .= '<li>' . __( 'XPoster successfully submitted a status update to X.com.', 'wp-to-twitter' ) . '</li>';
 				}
 				if ( 'mastodon' === $key ) {
-					$message .= '<li><strong>' . __( 'XPoster successfully submitted a status update to your Mastodon instance.', 'wp-to-twitter' ) . '</strong></li>';
+					$message .= '<li>' . __( 'XPoster successfully submitted a status update to your Mastodon instance.', 'wp-to-twitter' ) . '</li>';
 				}
 				if ( 'bluesky' === $key ) {
-					$message .= '<li><strong>' . __( 'XPoster successfully submitted a status update to your Bluesky account.', 'wp-to-twitter' ) . '</strong></li>';
+					$message .= '<li>' . __( 'XPoster successfully submitted a status update to your Bluesky account.', 'wp-to-twitter' ) . '</li>';
 				}
 			}
 		} else {
 			$error    = wpt_get_log( 'wpt_status_message', 'test' );
-			$message .= '<li class="error"><strong>' . __( 'XPoster failed to submit status updates.', 'wp-to-twitter' ) . '</strong></li>';
-			$message .= "<li class='error'>$error</li>";
+			$message .= '<li class="error">' . __( 'XPoster failed to submit status updates.', 'wp-to-twitter' ) . '</li>';
+			$message .= ( '' !== $error ) ? "<li class='error'>$error</li>" : '';
 		}
 	} else {
-		$message .= '<strong>' . __( 'You have not connected WordPress to a supported service.', 'wp-to-twitter' ) . '</strong> ';
+		$message .= __( 'You have not connected WordPress to a supported service.', 'wp-to-twitter' ) . ' ';
 	}
 	if ( false === $testpost && false === $shrink ) {
 		$message .= '<li class="error">' . __( "<strong>Your server does not appear to support the required methods for XPoster to function.</strong> You can try it anyway - these tests aren't perfect.", 'wp-to-twitter' ) . '</li>';
 	}
 	if ( $testpost && $shrink ) {
-		$message .= '<li><strong>' . __( 'Your server should run XPoster successfully.', 'wp-to-twitter' ) . '</strong></li>';
+		$message .= '<li>' . __( 'Your server should run XPoster successfully.', 'wp-to-twitter' ) . '</li>';
 	}
 	$message .= '</ul>
 	</div>';
@@ -176,18 +179,31 @@ function wpt_check_functions() {
  * Generate Settings links.
  */
 function wpt_settings_tabs() {
-	$output   = '';
 	$username = get_option( 'wtt_twitter_username' );
 	$default  = ( '' === $username || false === $username ) ? 'connection' : 'basic';
-	$current  = ( isset( $_GET['tab'] ) ) ? sanitize_text_field( $_GET['tab'] ) : $default;
+	$current  = ( isset( $_GET['tab'] ) ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : $default;
 	$pro_text = ( function_exists( 'wpt_pro_exists' ) ) ? __( 'Pro Settings', 'wp-to-twitter' ) : __( 'XPoster PRO', 'wp-to-twitter' );
 
-	$yes         = '<span class="dashicons dashicons-yes" aria-label="Connected"></span>';
-	$no          = '<span class="dashicons dashicons-no" aria=label="Unconnected"></span>';
-	$x_connected = ( wtt_oauth_test() ) ? $yes : $no;
-	$m_connected = ( wpt_mastodon_connection() ) ? $yes : $no;
-	$b_connected = ( wpt_bluesky_connection() ) ? $yes : $no;
-	$pages       = array(
+	$yes      = '<span class="dashicons dashicons-yes" aria-label="Connected"></span>';
+	$no       = '<span class="dashicons dashicons-no" aria=label="Unconnected"></span>';
+	$disabled = '<span class="dashicons dashicons-hidden" aria-label="Disabled"></span>';
+	if ( wtt_oauth_test() ) {
+		$x_connected = ( wpt_service_enabled( false, 'x' ) ) ? $yes : $disabled;
+	} else {
+		$x_connected = $no;
+	}
+	if ( wpt_mastodon_connection() ) {
+		$m_connected = ( wpt_service_enabled( false, 'mastodon' ) ) ? $yes : $disabled;
+	} else {
+		$m_connected = $no;
+	}
+	if ( wpt_bluesky_connection() ) {
+		$b_connected = ( wpt_service_enabled( false, 'bluesky' ) ) ? $yes : $disabled;
+	} else {
+		$b_connected = $no;
+	}
+
+	$pages = array(
 		'connection' => __( 'X', 'wp-to-twitter' ) . $x_connected,
 		'mastodon'   => __( 'Mastodon', 'wp-to-twitter' ) . $m_connected,
 		'bluesky'    => __( 'Bluesky', 'wp-to-twitter' ) . $b_connected,
@@ -213,14 +229,15 @@ function wpt_settings_tabs() {
 
 	foreach ( $pages as $key => $value ) {
 		$selected = ( $key === $current ) ? ' nav-tab-active' : '';
-		$url      = esc_url( add_query_arg( 'tab', $key, $admin_url ) );
+		$url      = add_query_arg( 'tab', $key, $admin_url );
 		if ( 'pro' === $key ) {
-			$output .= "<a class='wpt-pro-tab nav-tab$selected' href='$url'>$value</a>";
-		} else {
-			$output .= "<a class='nav-tab$selected' href='$url'>$value</a>";
+			$selected .= ' wpt-pro-tab';
 		}
+		?>
+		<a class='nav-tab<?php echo esc_attr( $selected ); ?>' href='<?php echo esc_url( $url ); ?>'><?php echo wp_kses_post( $value ); ?></a>
+		<?php
+
 	}
-	echo $output;
 }
 
 /**
@@ -271,7 +288,13 @@ function wpt_show_last_update() {
 				$notice = __( 'Unrecognized error', 'wp-to-twitter' );
 				$code   = '';
 			}
-			echo "<div class='notice notice-info'><p><strong>" . __( 'Last Status Update', 'wp-to-twitter' ) . ": <code>$code</code></strong> $title &raquo; $notice</p></div>";
+			$message = '<strong>' . __( 'Last Status Update', 'wp-to-twitter' ) . ": <code>$code</code></strong> $title &raquo; $notice";
+			wp_admin_notice(
+				$message,
+				array(
+					'type' => 'info',
+				)
+			);
 		}
 	}
 }
@@ -285,20 +308,20 @@ function wpt_handle_errors() {
 	}
 	if ( '1' === get_option( 'wp_url_failure' ) ) {
 		$admin_url = admin_url( 'admin.php?page=wp-tweets-pro' );
-		$nonce     = wp_nonce_field( 'wp-to-twitter-nonce', '_wpnonce', true, false ) . wp_referer_field( false );
-		$error     = '<div class="error"><p>' . __( 'The query to the URL shortener API failed, and your URL was not shrunk. The full post URL was attached to your status update. Check with your URL shortening provider to see if there are any known issues.', 'wp-to-twitter' ) .
-			'</p><form method="post" action="' . $admin_url . '">
+		?>
+		<div class="error">
+			<p><?php esc_html_e( 'The query to the URL shortener API failed, and your URL was not shrunk. The full post URL was attached to your status update. Check with your URL shortening provider to see if there are any known issues.', 'wp-to-twitter' ); ?></p>
+			<form method="post" action="<?php esc_url( $admin_url ); ?>">
 				<div>
 					<input type="hidden" name="submit-type" value="clear-error"/>
-					' . $nonce . '
+					<?php wp_nonce_field( 'wp-to-twitter-nonce', '_wpnonce', true, true ); ?>
 				</div>
 				<p>
-					<input type="submit" name="submit" value="' . __( 'Clear Error Messages', 'wp-to-twitter' ) . '" class="button-primary" />
+					<input type="submit" name="submit" value="<?php esc_html_e( 'Clear Error Messages', 'wp-to-twitter' ); ?>" class="button-primary" />
 				</p>
 			</form>
-		</div>';
-
-		echo $error;
+		</div>
+		<?php
 	}
 }
 
@@ -308,12 +331,12 @@ function wpt_handle_errors() {
  * @param string $role Role name.
  * @param string $cap Capability name.
  *
- * @return Check if has capability.
+ * @return string 'checked' if has capability.
  */
 function wpt_check_caps( $role, $cap ) {
 	$role = get_role( $role );
 	if ( $role->has_cap( $cap ) ) {
-		return " checked='checked'";
+		return 'checked';
 	}
 	return '';
 }
@@ -324,11 +347,16 @@ function wpt_check_caps( $role, $cap ) {
  * @param string $role Role name.
  * @param string $cap Capability name.
  * @param string $name Display name for capability.
- *
- * @return Checkbox HTML.
  */
 function wpt_cap_checkbox( $role, $cap, $name ) {
-	return "<li><input type='checkbox' id='wpt_caps_{$role}_$cap' name='wpt_caps[$role][$cap]' value='on'" . wpt_check_caps( $role, $cap ) . " /> <label for='wpt_caps_{$role}_$cap'>" . esc_html( $name ) . '</label></li>';
+	$id       = 'wpt_caps_' . $role . '_' . $cap;
+	$has_caps = wpt_check_caps( $role, $cap );
+	?>
+	<li>
+		<input type='checkbox' id='<?php echo esc_attr( $id ); ?>' name='wpt_caps[<?php echo esc_attr( $role ); ?>][<?php echo esc_attr( $cap ); ?>]' value='on'<?php checked( 'checked', $has_caps ); ?> />
+		<label for='<?php echo esc_attr( $id ); ?>'><?php echo esc_html( $name ); ?></label>
+	</li>
+	<?php
 }
 
 /**
@@ -375,44 +403,48 @@ function wpt_show_debug() {
 	if ( WPT_DEBUG ) {
 		$records   = '';
 		$debug_log = get_post_meta( $post_ID, '_wpt_debug_log' );
-		if ( is_array( $debug_log ) ) {
-			foreach ( $debug_log as $entry ) {
-				$microtime = $entry[0];
-				$date      = explode( ' ', $microtime );
-				if ( count( $date ) > 1 ) {
-					$datetime = $date[1];
-				} else {
-					$datetime = $date[0];
-				}
-				$date     = date_i18n( 'Y-m-d H:i:s', $datetime );
-				$subject  = $entry[1];
-				$body     = $entry[2];
-				$records .= "<li><button type='button' class='toggle-debug button-secondary' aria-expanded='false'><div><strong>$date</strong><br />" . esc_html( $subject ) . "</div><span class='dashicons dashicons-plus' aria-hidden='true'></span></button><pre class='wpt-debug-details'>" . esc_html( $body ) . '</pre></li>';
-			}
-		}
-		$script = "
-<script>
-(function ($) {
-	$(function() {
-		$( 'button.toggle-debug' ).on( 'click', function() {
-			var next = $( this ).next( 'pre' );
-			if ( $( this ).next( 'pre' ).is( ':visible' ) ) {
-				$( this ).next( 'pre' ).hide();
-				$( this ).attr( 'aria-expanded', 'false' );
-			} else {
-				$( this ).next( 'pre' ).show();
-				$( this ).attr( 'aria-expanded', 'true' );
-			}
-		});
-	})
-})(jQuery);
-</script>";
-		$delete = "<ul>
-		<li><input type='checkbox' name='wpt-delete-debug' value='true' id='wpt-delete-debug'> <label for='wpt-delete-debug'>" . __( 'Delete debugging logs on this post', 'wp-to-twitter' ) . "</label></li>
-		<li><input type='checkbox' name='wpt-delete-all-debug' value='true' id='wpt-delete-all-debug'> <label for='wpt-delete-all-debug'>" . __( 'Delete debugging logs for all posts', 'wp-to-twitter' ) . '</label></li>
-		</ul>';
 
-		echo ( '' !== $records ) ? "$script<div class='wpt-debug-log'><h3>Debugging Log:</h3><ul>$records</ul></div>$delete" : '';
+		if ( ! empty( $debug_log ) ) {
+			?>
+			<div class='wpt-debug-log'>
+				<h3>Debugging Log:</h3>
+				<ul>
+					<?php
+					if ( is_array( $debug_log ) && ! empty( $debug_log ) ) {
+						foreach ( $debug_log as $entry ) {
+							$microtime = $entry[0];
+							$date      = explode( ' ', $microtime );
+							if ( count( $date ) > 1 ) {
+								$datetime = $date[1];
+							} else {
+								$datetime = $date[0];
+							}
+							$date    = date_i18n( 'Y-m-d H:i:s', $datetime );
+							$subject = $entry[1];
+							$body    = $entry[2];
+							?>
+							<li>
+								<button type='button' class='toggle-debug button-secondary' aria-expanded='false'>
+									<div>
+										<strong><?php echo esc_html( $date ); ?></strong><br />
+										<?php echo esc_html( $subject ); ?>
+									</div>
+									<span class='dashicons dashicons-plus' aria-hidden='true'></span>
+								</button>
+								<pre class='wpt-debug-details'><?php echo wp_kses_post( $body ); ?></pre>
+							</li>
+							<?php
+						}
+					}
+					?>
+				</ul>
+			</div>
+			<ul>
+				<li><input type='checkbox' name='wpt-delete-debug' value='true' id='wpt-delete-debug'> <label for='wpt-delete-debug'><?php esc_html_e( 'Delete debugging logs on this post', 'wp-to-twitter' ); ?></label></li>
+				<li><input type='checkbox' name='wpt-delete-all-debug' value='true' id='wpt-delete-all-debug'> <label for='wpt-delete-all-debug'><?php esc_html_e( 'Delete debugging logs for all posts', 'wp-to-twitter' ); ?></label></li>
+			</ul>
+			<?php
+		}
 	}
 }
 
@@ -657,7 +689,7 @@ function wpt_post_is_new( $modified, $postdate ) {
 }
 
 /**
- * Gets the first attachment for the supplied post.
+ * Gets the attachment intended for use in status updates for a post.
  *
  * @param integer $post_ID The post ID.
  *
@@ -710,7 +742,17 @@ function wpt_post_attachment( $post_ID ) {
 	 *
 	 * @return {int|bool}
 	 */
-	return apply_filters( 'wpt_post_attachment', $attachment_id, $post_ID );
+	$attachment_id = apply_filters( 'wpt_post_attachment', $attachment_id, $post_ID );
+	$meta          = wp_get_attachment_metadata( $attachment_id );
+	if ( ! isset( $meta['width'], $meta['height'] ) ) {
+		wpt_mail( "Image Data Does not Exist for #$attachment_id", wpt_format_error( $meta ), $post_ID );
+		$attachment_id = false;
+	}
+	if ( $attachment_id ) {
+		wpt_mail( 'Post has media to upload', "Attachment ID: $attachment_id", $post_ID );
+	}
+
+	return $attachment_id;
 }
 
 /**
@@ -737,7 +779,7 @@ function wpt_pro_is_valid() {
  * Show support form. Note: text in the message body should not be translatable.
  */
 function wpt_get_support_form() {
-	global $current_user, $wpt_version;
+	global $current_user;
 	$current_user   = wp_get_current_user();
 	$request        = '';
 	$response_email = $current_user->user_email;
@@ -745,7 +787,7 @@ function wpt_get_support_form() {
 	$license = wpt_pro_is_valid();
 	if ( $license ) {
 		$license_key          = 'License Key: ' . $license;
-		$version              = $wpt_version;
+		$version              = XPOSTER_VERSION;
 		$wtt_twitter_username = get_option( 'wtt_twitter_username' );
 		// send fields for all plugins.
 		$wp_version = get_bloginfo( 'version' );
@@ -761,6 +803,7 @@ function wpt_get_support_form() {
 		$theme_name    = $theme->get( 'Name' );
 		$theme_uri     = $theme->get( 'ThemeURI' );
 		$theme_parent  = $theme->get( 'Template' );
+		$theme_parent  = ( $theme_parent ) ? $theme_parent : __( 'None', 'wp-to-twitter' );
 		$theme_version = $theme->get( 'Version' );
 
 		$admin_email = get_option( 'admin_email' );
@@ -776,6 +819,8 @@ function wpt_get_support_form() {
 				$plugins_string .= "$plugin_name: $plugin_version; $plugin_uri\n";
 			}
 		}
+		$server = isset( $_SERVER['SERVER_SOFTWARE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) : 'N/A';
+		$agent  = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : 'N/A';
 
 		$data = "
 	================ Installation Data ====================
@@ -795,8 +840,8 @@ function wpt_get_support_form() {
 
 	==Extra info:==
 	PHP Version: $php_version
-	Server Software: $_SERVER[SERVER_SOFTWARE]
-	User Agent: $_SERVER[HTTP_USER_AGENT]
+	Server Software: $server
+	User Agent: $agent
 
 	==Theme:==
 	Name: $theme_name
@@ -808,11 +853,11 @@ function wpt_get_support_form() {
 	$plugins_string
 	";
 		if ( isset( $_POST['wpt_support'] ) ) {
-			$nonce = $_REQUEST['_wpnonce'];
+			$nonce = ( isset( $_REQUEST['_wpnonce'] ) ) ? sanitize_text_field( wp_unslash( $_REQUEST['_wpnonce'] ) ) : false;
 			if ( ! wp_verify_nonce( $nonce, 'wp-to-twitter-nonce' ) ) {
 				wp_die( 'XPoster: Security check failed' );
 			}
-			$request = ( ! empty( $_POST['support_request'] ) ) ? stripslashes( sanitize_textarea_field( $_POST['support_request'] ) ) : false;
+			$request = ( ! empty( $_POST['support_request'] ) ) ? sanitize_textarea_field( wp_unslash( $_POST['support_request'] ) ) : false;
 			if ( function_exists( 'wpt_pro_exists' ) && true === wpt_pro_exists() ) {
 				$pro = ' PRO';
 			} else {
@@ -820,85 +865,88 @@ function wpt_get_support_form() {
 			}
 			$subject        = "XPoster $pro support request.";
 			$message        = $request . "\n\n" . $data;
-			$response_email = ( isset( $_POST['response_email'] ) ) ? sanitize_email( $_POST['response_email'] ) : false;
+			$response_email = ( isset( $_POST['response_email'] ) ) ? sanitize_email( wp_unslash( $_POST['response_email'] ) ) : false;
 			$from           = "From: $current_user->display_name <$response_email>\r\nReply-to: $current_user->display_name <$response_email>\r\n";
 
 			if ( ! $response_email ) {
-				echo "<div class='notice error'><p>" . __( 'Please supply a valid email where you can receive support responses.', 'wp-to-twitter' ) . '</p></div>';
+				wp_admin_notice(
+					__( 'Please supply a valid email where you can receive support responses.', 'wp-to-twitter' ),
+					array(
+						'type' => 'error',
+					)
+				);
 			} elseif ( ! $request ) {
-				echo "<div class='notice error'><p>" . __( 'Please describe your problem. I\'m not psychic.', 'wp-to-twitter' ) . '</p></div>';
+				wp_admin_notice(
+					__( 'Please describe your problem. Thank you!', 'wp-to-twitter' ),
+					array(
+						'type' => 'error',
+					)
+				);
 			} else {
 				$sent = wp_mail( 'plugins@xposterpro.com', $subject, $message, $from );
 				if ( $sent ) {
 					// Translators: Email address.
-					echo "<div class='notice updated'><p>" . sprintf( __( 'Thank you for supporting XPoster! I\'ll get back to you as soon as I can. Please make sure you can receive email at <code>%s</code>.', 'wp-to-twitter' ), $response_email ) . '</p></div>';
+					$message = sprintf( __( 'Thank you! I\'ll get back to you as soon as I can. Please make sure you can receive email at <code>%s</code>.', 'wp-to-twitter' ), $response_email );
+					wp_admin_notice(
+						$message,
+						array(
+							'type' => 'success',
+						)
+					);
 				} else {
 					// Translators: URL to plugin support form.
-					echo "<div class='notice error'><p>" . __( "Sorry! I couldn't send that message. Here's the text of your request:", 'wp-to-twitter' ) . '</p><p>' . sprintf( __( '<a href="%s">Contact me here</a>, instead.', 'wp-to-twitter' ), 'https://www.joedolson.com/contact/get-support/' ) . "</p><pre>$request</pre></div>";
+					$message = '<p>' . sprintf( __( "Sorry! I couldn't send that message. Here's the text of your request:", 'wp-to-twitter' ) ) . '</p><p>' . sprintf( __( '<a href="%s">Contact me here</a>, instead.', 'wp-to-twitter' ), 'https://www.xposterpro.com/contact/get-support/' ) . "</p><pre>$request</pre>";
+					wp_admin_notice(
+						$message,
+						array(
+							'type'           => 'error',
+							'paragraph_wrap' => false,
+						)
+					);
 				}
 			}
 		}
 		$admin_url = admin_url( 'admin.php?page=wp-tweets-pro' );
 		$admin_url = add_query_arg( 'tab', 'support', $admin_url );
-		echo "
-		<form method='post' action='$admin_url'>
-			<div><input type='hidden' name='_wpnonce' value='" . wp_create_nonce( 'wp-to-twitter-nonce' ) . "' /></div>
+		?>
+		<form method='post' action='<?php echo esc_url( $admin_url ); ?>'>
+			<div><input type='hidden' name='_wpnonce' value='<?php echo esc_attr( wp_create_nonce( 'wp-to-twitter-nonce' ) ); ?>' /></div>
 			<div>
-			<p>" . __( "If you're having trouble with XPoster Pro, please try to answer these questions in your message:", 'wp-to-twitter' ) . '</p>
+			<p><?php esc_html_e( "If you're having trouble with XPoster Pro, please try to answer these questions in your message:", 'wp-to-twitter' ); ?></p>
 			<ul>
-				<li>' . __( 'What were you doing when the problem occurred?', 'wp-to-twitter' ) . '</li>
-				<li>' . __( 'What did you expect to happen?', 'wp-to-twitter' ) . '</li>
-				<li>' . __( 'What happened instead?', 'wp-to-twitter' ) . "</li>
+				<li><?php esc_html_e( 'What were you doing when the problem occurred?', 'wp-to-twitter' ); ?></li>
+				<li><?php esc_html_e( 'What did you expect to happen?', 'wp-to-twitter' ); ?></li>
+				<li><?php esc_html_e( 'What happened instead?', 'wp-to-twitter' ); ?></li>
 			</ul>
 			<p>
-			<label for='response_email'>" . __( 'Your Email', 'wp-to-twitter' ) . "</label><br />
-			<input type='email' name='response_email' id='response_email' value='$response_email' class='widefat' required='required' aria-required='true' />
+			<label for='response_email'><?php esc_html_e( 'Your Email', 'wp-to-twitter' ); ?></label><br />
+			<input type='email' name='response_email' id='response_email' value='<?php esc_attr( $response_email ); ?>' class='widefat' required='required' />
 			</p>
 			<p>
-			<label for='support_request'>" . __( 'Support Request:', 'wp-to-twitter' ) . "</label><br /><textarea class='support-request' name='support_request' id='support_request' cols='80' rows='10' class='widefat'>" . stripslashes( esc_attr( $request ) ) . "</textarea>
+			<label for='support_request'><?php esc_html_e( 'Support Request:', 'wp-to-twitter' ); ?></label><br />
+			<textarea class='support-request' name='support_request' id='support_request' cols='80' rows='10' class='widefat'><?php echo esc_textarea( stripslashes( $request ) ); ?></textarea>
 			</p>
 			<p>
-			<input type='submit' value='" . __( 'Send Support Request', 'wp-to-twitter' ) . "' name='wpt_support' class='button-primary' />
+			<input type='submit' value='<?php esc_attr_e( 'Send Support Request', 'wp-to-twitter' ); ?>' name='wpt_support' class='button-primary' />
 			</p>
-			<p>" .
-			__( 'The following additional information will be sent with your support request:', 'wp-to-twitter' )
-			. '</p>
+			<p><?php esc_html_e( 'The following additional information will be sent with your support request:', 'wp-to-twitter' ); ?></p>
 			</div>
-		</form>';
-
-		echo "<div class='wpt_support'>
-		" . wpautop( $data ) . '
-		</div>';
+		</form>
+		<div class='wpt_support'>
+			<?php
+			echo wp_kses_post( wpautop( $data ) );
+			?>
+		</div>
+		<?php
 	} else {
-		echo '<p>' . __( 'You need a valid XPoster Pro license to receive support. Return to this screen to use the premium support form after <a href="https://xposterpro.com/awesome/xposter-pro/">getting your Pro license</a>.', 'wp-to-twitter' ) . '</p>';
-	}
-	wpt_faq();
-}
-
-/**
- * FAQ questions.
- */
-function wpt_faq() {
-	$qs = array(
-		array(
-			'question' => __( 'My app has been suspended by X.com. What do I do now?', 'wp-to-twitter' ),
-			'answer'   => __( 'Some users have been successful by removing their existing app and creating a new one, following the setup instructions in the X.com Connection tab. It is unlikely you will make any progress by contesting the suspension.', 'wp-to-twitter' ),
-		),
-		array(
-			'question' => __( "I'm receiving a '401 Unauthorized' error from X.com, but my credentials haven't changed. What should I do?", 'wp-to-twitter' ),
-			'answer'   => __( 'First, check and see whether your app has been suspended in your X.com developer account. If it has, see above. If not, this is most likely a temporary problem in the X.com API; but you can try generating new keys and secrets in your developer account and re-connect your app. Some users have also been successful by changing their account status to the free account. (Older accounts may have a legacy status that is not handled well by X.com.)', 'wp-to-twitter' ),
-		),
-		array(
-			'question' => __( "I'm receiving a '429 Too Many Requests' error from X.com. What should I do?", 'wp-to-twitter' ),
-			'answer'   => __( 'X.com changed their free API usage limits in October 2024, reducing them from 1500 per month to 500 per month, with a maximum allowance of 17 per day. This change significantly increases the likelihood that you will exceed the allowed API usage on the free account. Your only option is to upgrade to an alternate API tier; this is not included in a Premium X.com account.', 'wp-to-twitter' ),
-		),
-	);
-
-	echo '<h2>' . __( 'Frequently Asked Questions', 'wp-to-twitter' ) . '</h2>';
-	echo '<p>' . __( '<strong>Please note:</strong> These answers are mostly guesswork; user experiences have been inconsistent and the documentation does not always match real behavior.', 'wp-to-twitter' ) . '</p>';
-	foreach ( $qs as $q ) {
-		echo '<h3>' . $q['question'] . '</h3>';
-		echo wpautop( $q['answer'] );
+		?>
+		<p>
+			<?php
+			// translators: 1) link, 2) close link.
+			echo sprintf( esc_html__( 'You need a valid XPoster Pro license to receive support. Return to this screen to use the premium support form after %1$sgetting your Pro license%2$s.', 'wp-to-twitter' ), '<a href="https://xposterpro.com/awesome/xposter-pro/">', '</a>' );
+			?>
+		</p>
+		<?php
 	}
 }
 
@@ -944,30 +992,6 @@ function wpt_check_mime_type( $attachment_id, $service ) {
 	return $return;
 }
 
-/**
- * Make a curl query.
- *
- * @param string $url URL to query.
- *
- * @return Curl response.
- */
-function wp_get_curl( $url ) {
-	$curl = curl_init( $url );
-	curl_setopt( $curl, CURLOPT_RETURNTRANSFER, true );
-	curl_setopt( $curl, CURLOPT_HEADER, 0 );
-	curl_setopt( $curl, CURLOPT_USERAGENT, '' );
-	curl_setopt( $curl, CURLOPT_TIMEOUT, 10 );
-	curl_setopt( $curl, CURLOPT_FOLLOWLOCATION, true );
-
-	$response = curl_exec( $curl );
-	if ( 0 !== curl_errno( $curl ) || 200 !== curl_getinfo( $curl, CURLINFO_HTTP_CODE ) ) {
-		$response = false;
-	} // end if.
-	curl_close( $curl );
-
-	return $response;
-}
-
 add_action( 'dp_duplicate_post', 'wpt_delete_copied_meta', 10, 2 );
 add_action( 'dp_duplicate_page', 'wpt_delete_copied_meta', 10, 2 );
 /**
@@ -997,4 +1021,96 @@ function wpt_delete_copied_meta( $new_id, $post ) {
 	delete_post_meta( $new_id, '_jd_wp_twitter' );
 	delete_post_meta( $new_id, '_jd_twitter' );
 	delete_post_meta( $new_id, '_wpt_failed' );
+}
+
+/**
+ * Update stored set of authenticated users.
+ */
+function wpt_update_authenticated_users() {
+	$args = array(
+		'meta_query' => array(
+			array(
+				'key'     => 'wtt_twitter_username',
+				'compare' => 'EXISTS',
+			),
+		),
+	);
+	// get all authorized users.
+	$users            = get_users( $args );
+	$authorized_users = array();
+	if ( is_array( $users ) ) {
+		foreach ( $users as $this_user ) {
+			if ( wtt_oauth_test( $this_user->ID, 'verify' ) ) {
+				$twitter            = get_user_meta( $this_user->ID, 'wtt_twitter_username', true );
+				$authorized_users[] = array(
+					'ID'      => $this_user->ID,
+					'name'    => $this_user->display_name,
+					'twitter' => $twitter,
+				);
+			}
+		}
+	}
+
+	update_option( 'wpt_authorized_users', $authorized_users );
+}
+
+/**
+ * Format errors for storing in debugging data. Recursive.
+ *
+ * @param array|object $data Data to format.
+ *
+ * @return string String version of data.
+ */
+function wpt_format_error( $data ) {
+	if ( ! is_array( $data ) ) {
+		if ( is_object( $data ) ) {
+			$data = json_decode( wp_json_encode( $data ), true );
+		} else {
+			$data = (array) $data;
+		}
+	}
+	$output = '';
+	foreach ( $data as $key => $value ) {
+		if ( is_array( $value ) || is_object( $value ) ) {
+			$output .= '<li><strong>' . esc_html( $key ) . '</strong>:' . wpt_format_error( $value );
+		} else {
+			$output .= '<li><strong>' . esc_html( $key ) . '</strong>:' . esc_html( $value ) . PHP_EOL . '</li>';
+		}
+	}
+
+	return '<ul>' . $output . '</ul>';
+}
+
+/**
+ * Adds links, mentions, and hashtags to status updates.
+ *
+ * @param string $text A string representing the content of a status update.
+ * @param string $service Service being parsed for. Default Bluesky.
+ *
+ * @return string Linkified tweet content
+ */
+function wpt_text_linkify( $text, $service = 'bluesky' ) {
+	switch ( $service ) {
+		case 'bluesky':
+			$profile_url = 'https://bsky.app/profile';
+			$hash_url    = 'https://bsky.app/hashtag/';
+			break;
+		case 'mastodon':
+			$profile_url = '' . '/@';
+			$hash_url    = '' . '/tags/';
+			break;
+		case 'x':
+			$profile_url = 'https://x.com';
+			$hash_url    = 'https://x.com/search?q=%23';
+			break;
+		default:
+			$profile_url = 'https://bsky.app/profile';
+			$hash_url    = 'https://bsky.app/hashtag/';
+	}
+
+	$text = html_entity_decode( make_clickable( $text ) );
+	$text = preg_replace( '/@(\w.+)/', '<a href="' . $profile_url . '/\\1" rel="nofollow">@\\1</a>', $text );
+	$text = preg_replace( '/#(\w+)/', '<a href="' . $hash_url . '\\1" rel="nofollow">#\\1</a>', $text );
+
+	return $text;
 }
