@@ -408,11 +408,11 @@ function wtt_connect_oauth( $auth = false ) {
 			if ( ! $auth ) {
 				?>
 				<p class="submit"><input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( 'Connect to X.com', 'wp-to-twitter' ); ?>" /></p>
+				<?php wp_nonce_field( 'wp-to-twitter-nonce', '_wpnonce', true, true ); ?>
 				<?php
 			}
 			?>
 			<input type="hidden" name="oauth_settings" value="wtt_oauth_test" class="hidden" />
-			<?php wp_nonce_field( 'wp-to-twitter-nonce', '_wpnonce', true, true ); ?>
 		</div>
 		<?php
 	} elseif ( wtt_oauth_test( $auth ) ) {
@@ -479,7 +479,7 @@ function wtt_connect_oauth( $auth = false ) {
 				wp_nonce_field( 'wp-to-twitter-nonce', '_wpnonce', true, true );
 			} else {
 				?>
-				<input type="checkbox" name="oauth_settings" value="wtt_twitter_disconnect" id="disconnect" /> <label for="disconnect"><?php esc_html_e( 'Disconnect Your Account from X', 'wp-to-twitter' ); ?></label>
+				<input type="checkbox" name="oauth_settings" value="wtt_twitter_disconnect" id="disconnect_x" /> <label for="disconnect_x"><?php esc_html_e( 'Disconnect Your Account from X', 'wp-to-twitter' ); ?></label>
 				<?php
 			}
 			echo ( ! $auth ) ? '</form>' : '';

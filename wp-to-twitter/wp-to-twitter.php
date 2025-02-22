@@ -16,7 +16,7 @@
  * Text Domain: wp-to-twitter
  * License:     GPL-2.0+
  * License URI: http://www.gnu.org/license/gpl-2.0.txt
- * Version:     5.0.1
+ * Version:     5.0.2
  */
 
 /*
@@ -78,7 +78,7 @@ require_once plugin_dir_path( __FILE__ ) . 'wp-to-twitter-manager.php';
 require_once plugin_dir_path( __FILE__ ) . 'wpt-truncate.php';
 require_once plugin_dir_path( __FILE__ ) . 'wpt-rate-limiting.php';
 
-define( 'XPOSTER_VERSION', '5.0.1' );
+define( 'XPOSTER_VERSION', '5.0.2' );
 
 register_activation_hook( __FILE__, 'wpt_check_version' );
 /**
@@ -1204,6 +1204,7 @@ function wpt_admin_style() {
 		'xposter-pro_page_wp-to-twitter-tweets',
 		'xposter-pro_page_wp-to-twitter-errors',
 		'profile',
+		'user-edit',
 	);
 	if ( in_array( $current_screen->base, $enqueues, true ) ) {
 		wp_enqueue_style( 'wpt-styles', plugins_url( 'css/styles.css', __FILE__ ), array(), $wpt_version );
