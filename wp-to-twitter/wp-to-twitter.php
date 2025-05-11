@@ -16,7 +16,7 @@
  * Text Domain: wp-to-twitter
  * License:     GPL-2.0+
  * License URI: http://www.gnu.org/license/gpl-2.0.txt
- * Version:     5.0.2
+ * Version:     5.0.3
  */
 
 /*
@@ -78,7 +78,7 @@ require_once plugin_dir_path( __FILE__ ) . 'wp-to-twitter-manager.php';
 require_once plugin_dir_path( __FILE__ ) . 'wpt-truncate.php';
 require_once plugin_dir_path( __FILE__ ) . 'wpt-rate-limiting.php';
 
-define( 'XPOSTER_VERSION', '5.0.2' );
+define( 'XPOSTER_VERSION', '5.0.3' );
 
 register_activation_hook( __FILE__, 'wpt_check_version' );
 /**
@@ -431,7 +431,7 @@ function wpt_post_to_twitter( $template, $auth = false, $id = false, $media = nu
 	} // exit silently if not authorized.
 
 	// Check if this update has already been sent to a given service.
-	$check = wpt_check_service_history( $id, $auth, $template, $connections );
+	$check = wpt_prepare_post( $id, $auth, $template, $connections );
 
 	// if has media, must have a valid attachment.
 	$media      = ( null === $media ) ? wpt_post_with_media( $id ) : $media;
@@ -513,7 +513,7 @@ function wpt_get_custom_template( $post_ID, $template, $service ) {
  *
  * @return array Array of statuses by service or false, if blocked.
  */
-function wpt_check_service_history( $post_ID, $auth, $template, $connections ) {
+function wpt_prepare_post( $post_ID, $auth, $template, $connections ) {
 	$checks = array();
 	foreach ( $connections as $service => $connected ) {
 		if ( ! $connected || ! wpt_service_enabled( $post_ID, $service ) ) {
@@ -1038,7 +1038,7 @@ function wpt_admin_scripts() {
 				'mastodon_limit' => $config['mastodon'],
 				'bluesky_limit'  => $config['bluesky'],
 				'is_ssl'         => ( wpt_is_ssl( home_url() ) ) ? 'true' : 'false',
-				'text'           => __( 'Characters left: ', 'wp-to-twitter' ),
+				'text'           => __( 'Length:', 'wp-to-twitter' ),
 				'updated'        => __( 'Custom status template updated', 'wp-to-twitter' ),
 			)
 		);
