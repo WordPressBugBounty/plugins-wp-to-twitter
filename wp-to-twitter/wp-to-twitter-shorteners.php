@@ -5,7 +5,7 @@
  * @category Core
  * @package  XPoster
  * @author   Joe Dolson
- * @license  GPLv3
+ * @license  GPLv2
  * @link     https://www.joedolson.com/wp-to-twitter/
  */
 
@@ -345,7 +345,7 @@ if ( ! function_exists( 'wpt_shorten_url' ) ) {
 	 * @param string $short_url Shortened URL.
 	 * @param int    $remote Remote or local install.
 	 *
-	 * @return long url.
+	 * @return string long url.
 	 */
 	function wpt_expand_yourl( $short_url, $remote ) {
 		if ( 6 === (int) $remote ) {
@@ -749,7 +749,7 @@ if ( ! function_exists( 'wpt_shorten_url' ) ) {
 	 *
 	 * @param array $post POST data.
 	 *
-	 * @return message.
+	 * @return string message.
 	 */
 	function wpt_select_shortener( $post ) {
 		$message = '';
@@ -807,12 +807,12 @@ if ( ! function_exists( 'wpt_shorten_url' ) ) {
 				<option value="3" <?php selected( $shortener, '3' ); ?>><?php esc_html_e( "Don't shorten URLs.", 'wp-to-twitter' ); ?></option>
 				<?php
 				$shorteners = wpt_get_shorteners( $shortener );
-				foreach ( $shorteners as $id => $info ) {
-					if ( 5 === $id && 5 !== $shortener ) {
+				foreach ( $shorteners as $key => $info ) {
+					if ( 5 === $key && 5 !== $shortener ) {
 						continue;
 					}
 					?>
-					<option value="<?php echo absint( $id ); ?>" <?php selected( $shortener, $id ); ?>><?php echo esc_html( $info['label'] ); ?></option>
+					<option value="<?php echo absint( $key ); ?>" <?php selected( $shortener, $key ); ?>><?php echo esc_html( $info['label'] ); ?></option>
 					<?php
 				}
 				?>
